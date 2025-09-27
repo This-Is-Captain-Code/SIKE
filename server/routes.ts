@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { walletService } from "./services/walletService";
 import { ensService } from "./services/ensService";
+import { poapService } from "./services/poapService";
 import { insertTransactionSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -227,6 +228,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching stats:", error);
       res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  // POAP routes
+  // Validation schema for POAP requests
+  const poapRequestSchema = z.object({
+    receiverUsername: z.string().min(1, 'Receiver username is required').max(50, 'Username too long'),
+    memoryMessage: z.string().max(500, 'Memory message too long').optional().default('POAP Memory Created for Captain Code')
+  });
+
+  // Create POAP memory
+  app.post('/api/poap/create-memory', isAuthenticated, async (req: any, res) => {
+    try {
+      const senderId = req.user.claims.sub;
+      
+      // Validate request body with Zod
+      const validationResult = poapRequestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request data",
+          errors: validationResult.error.errors
+        });
+      }
+      
+      const { receiverUsername, memoryMessage } = validationResult.data;
+
+      const sender = await storage.getUser(senderId);
+      const receiver = await storage.getUserByUsername(receiverUsername);
+
+      if (!sender || !receiver) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!sender.walletAddress) {
+        return res.status(400).json({ message: "Sender wallet not found" });
+      }
+
+      if (!receiver.walletAddress) {
+        return res.status(400).json({ message: "Receiver wallet not found" });
+      }
+
+      // Create transaction record for POAP memory (amount = 0 for POAP)
+      const transaction = await storage.createTransaction({
+        fromUserId: senderId,
+        toUserId: receiver.id,
+        amount: '0', // POAP has no monetary value
+        status: 'pending',
+        message: memoryMessage
+      });
+
+      try {
+        // Create POAP memory on blockchain
+        const txHash = await poapService.createMemoryForUsers(
+          senderId,
+          receiver.id
+        );
+
+        // Update transaction with success
+        await storage.updateTransactionStatus(transaction.id, 'confirmed', txHash);
+
+        res.json({
+          success: true,
+          transactionId: transaction.id,
+          transactionHash: txHash,
+          message: 'POAP memory created successfully!'
+        });
+
+      } catch (blockchainError) {
+        // Update transaction with failure
+        await storage.updateTransactionStatus(transaction.id, 'failed');
+        throw blockchainError;
+      }
+
+    } catch (error) {
+      console.error("Error creating POAP memory:", error);
+      res.status(500).json({ message: "Failed to create POAP memory" });
     }
   });
 
