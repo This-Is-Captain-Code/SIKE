@@ -11,7 +11,7 @@ export default function Landing() {
           <div className="mx-auto mb-4">
             <img src={logoSvg} alt="SIKE Logo" className="h-16 w-16 object-contain mx-auto" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2" data-testid="title-app-name">
+          <h1 className="text-3xl font-bold mb-2" style={{color: '#2563eb'}} data-testid="title-app-name">
             SIKE
           </h1>
           <p className="text-white/80" data-testid="text-app-description">

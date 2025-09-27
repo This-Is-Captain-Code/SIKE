@@ -241,7 +241,7 @@ export default function Dashboard() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <img src={logoSvg} alt="SIKE Logo" className="h-8 w-8 object-contain" />
-            <h1 className="text-lg font-semibold text-foreground" data-testid="title-dashboard">
+            <h1 className="text-lg font-semibold" style={{color: '#2563eb'}} data-testid="title-dashboard">
               SIKE
             </h1>
           </div>
