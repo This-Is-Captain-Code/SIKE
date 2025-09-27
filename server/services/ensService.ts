@@ -1,6 +1,32 @@
+import { ethers } from 'ethers';
+
+// ENS configuration with multiple reliable RPC endpoints
+const ENS_CONFIG = {
+  rpcUrls: [
+    process.env.ETHEREUM_RPC_URL || 'https://cloudflare-eth.com',
+    'https://rpc.ankr.com/eth',
+    'https://ethereum.publicnode.com',
+    'https://1rpc.io/eth'
+  ],
+};
+
 export class ENSService {
+  private providers: ethers.JsonRpcProvider[];
+  private currentProviderIndex: number = 0;
+
   constructor() {
-    // Simple service without blockchain calls to avoid contract errors
+    // Initialize multiple providers for fallback
+    this.providers = ENS_CONFIG.rpcUrls.map(url => new ethers.JsonRpcProvider(url));
+  }
+
+  private async getCurrentProvider(): Promise<ethers.JsonRpcProvider> {
+    // Return current provider, with fallback rotation on failures
+    return this.providers[this.currentProviderIndex];
+  }
+
+  private async rotateProvider(): Promise<void> {
+    this.currentProviderIndex = (this.currentProviderIndex + 1) % this.providers.length;
+    console.log(`Switching to RPC provider ${this.currentProviderIndex + 1}/${this.providers.length}`);
   }
 
   /**
@@ -29,24 +55,52 @@ export class ENSService {
         };
       }
 
-      // Since direct blockchain calls are failing, we'll use a simple approach
-      // Based on common knowledge of popular ENS names
-      const popularNames = [
-        'vitalik', 'ethereum', 'opensea', 'uniswap', 'chainlink', 'polygon',
-        'solana', 'bitcoin', 'crypto', 'nft', 'dao', 'defi', 'web3', 'metaverse',
-        'test', 'hello', 'world', 'name', 'domain', 'address', 'wallet',
-        'nick', 'brantly', 'tim', 'alex', 'john', 'mike', 'dave', 'steve'
-      ];
+      const fullName = `${normalizedName}.eth`;
 
-      const isLikelyRegistered = popularNames.includes(normalizedName) || normalizedName.length <= 4;
+      // Try to resolve the name using ethers.js built-in ENS support
+      let currentAddress: string | undefined;
+      let isRegistered = false;
+      let retryCount = 0;
+      const maxRetries = this.providers.length;
+
+      while (retryCount < maxRetries) {
+        try {
+          const provider = await this.getCurrentProvider();
+          console.log(`Attempting ENS resolution for ${fullName} (attempt ${retryCount + 1}/${maxRetries})`);
+          
+          // Use ethers.js built-in ENS resolution
+          const resolved = await provider.resolveName(fullName);
+          
+          if (resolved) {
+            currentAddress = resolved;
+            isRegistered = true;
+            console.log(`Successfully resolved ${fullName} to ${resolved}`);
+            break;
+          } else {
+            console.log(`Name ${fullName} not found - likely available`);
+            break;
+          }
+        } catch (error: any) {
+          console.log(`ENS resolution failed with provider ${this.currentProviderIndex + 1}: ${error.message}`);
+          
+          if (retryCount < maxRetries - 1) {
+            await this.rotateProvider();
+            retryCount++;
+            // Wait a bit before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.error(`All ENS resolution attempts failed for ${fullName}`);
+            // If all providers fail, try ENS public API as fallback
+            return await this.checkNameViaAPI(normalizedName);
+          }
+        }
+      }
 
       return {
         name: normalizedName,
         normalizedName,
-        available: !isLikelyRegistered,
-        ...(isLikelyRegistered && {
-          address: '0x1234567890123456789012345678901234567890' // Placeholder for demo
-        })
+        available: !isRegistered,
+        ...(currentAddress && { address: currentAddress })
       };
 
     } catch (error: any) {
@@ -60,22 +114,117 @@ export class ENSService {
   }
 
   /**
+   * Fallback method using ENS public API
+   */
+  private async checkNameViaAPI(normalizedName: string): Promise<{
+    name: string;
+    available: boolean;
+    address?: string;
+    error?: string;
+    normalizedName?: string;
+  }> {
+    try {
+      console.log(`Trying ENS API fallback for ${normalizedName}`);
+      
+      // Use ENS subgraph or similar public API
+      const response = await fetch(`https://api.thegraph.com/subgraphs/name/ensdomains/ens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              domain(id: "${normalizedName}") {
+                id
+                name
+                owner {
+                  id
+                }
+                resolver {
+                  id
+                }
+              }
+            }
+          `
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const domain = data.data?.domain;
+        
+        if (domain && domain.owner) {
+          return {
+            name: normalizedName,
+            normalizedName,
+            available: false,
+            address: domain.owner.id
+          };
+        } else {
+          return {
+            name: normalizedName,
+            normalizedName,
+            available: true
+          };
+        }
+      }
+      
+      throw new Error('API request failed');
+    } catch (error: any) {
+      console.error('ENS API fallback also failed:', error);
+      
+      // Final fallback - return likely availability based on name characteristics
+      const popularNames = ['vitalik', 'ethereum', 'opensea', 'uniswap', 'chainlink'];
+      const isLikelyRegistered = popularNames.includes(normalizedName) || normalizedName.length <= 4;
+      
+      return {
+        name: normalizedName,
+        normalizedName,
+        available: !isLikelyRegistered,
+        error: 'Unable to connect to blockchain - showing estimated availability'
+      };
+    }
+  }
+
+  /**
    * Resolve an ENS name to an Ethereum address
    * @param name - The ENS name (with or without .eth suffix)
    * @returns The resolved address or null if not found
    */
   async resolveName(name: string): Promise<string | null> {
     try {
-      const normalizedName = name.toLowerCase().replace('.eth', '').trim();
+      const normalizedName = name.toLowerCase().trim();
+      const fullName = normalizedName.endsWith('.eth') ? normalizedName : `${normalizedName}.eth`;
       
-      // Simple demo resolution for popular names
-      const knownNames: Record<string, string> = {
-        'vitalik': '0xd8da6bf26964af9d7eed9e03e53415d37aa96045',
-        'ethereum': '0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359',
-        'opensea': '0x570ba6952b0df20b5d50ad5cc9b5e0a6c6bd0b3f'
-      };
+      let retryCount = 0;
+      const maxRetries = this.providers.length;
 
-      return knownNames[normalizedName] || null;
+      while (retryCount < maxRetries) {
+        try {
+          const provider = await this.getCurrentProvider();
+          const address = await provider.resolveName(fullName);
+          
+          if (address) {
+            console.log(`Resolved ${fullName} to ${address}`);
+            return address;
+          }
+          return null;
+        } catch (error: any) {
+          console.log(`ENS resolution failed: ${error.message}`);
+          
+          if (retryCount < maxRetries - 1) {
+            await this.rotateProvider();
+            retryCount++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } else {
+            console.error(`All resolution attempts failed for ${fullName}`);
+            return null;
+          }
+        }
+      }
+      
+      return null;
     } catch (error) {
       console.error('Error resolving ENS name:', error);
       return null;
@@ -89,18 +238,38 @@ export class ENSService {
    */
   async reverseResolve(address: string): Promise<string | null> {
     try {
-      // Simple validation without ethers.js to avoid contract calls
-      if (!address || !address.match(/^0x[a-fA-F0-9]{40}$/)) {
+      if (!ethers.isAddress(address)) {
         return null;
       }
       
-      // Demo reverse lookup for known addresses
-      const knownAddresses: Record<string, string> = {
-        '0xd8da6bf26964af9d7eed9e03e53415d37aa96045': 'vitalik.eth',
-        '0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359': 'ethereum.eth'
-      };
+      let retryCount = 0;
+      const maxRetries = this.providers.length;
 
-      return knownAddresses[address.toLowerCase()] || null;
+      while (retryCount < maxRetries) {
+        try {
+          const provider = await this.getCurrentProvider();
+          const name = await provider.lookupAddress(address);
+          
+          if (name) {
+            console.log(`Reverse resolved ${address} to ${name}`);
+            return name;
+          }
+          return null;
+        } catch (error: any) {
+          console.log(`ENS reverse resolution failed: ${error.message}`);
+          
+          if (retryCount < maxRetries - 1) {
+            await this.rotateProvider();
+            retryCount++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } else {
+            console.error(`All reverse resolution attempts failed for ${address}`);
+            return null;
+          }
+        }
+      }
+      
+      return null;
     } catch (error) {
       console.error('Error reverse resolving address:', error);
       return null;
@@ -133,11 +302,19 @@ export class ENSService {
       }
 
       // Get additional info for registered names
+      const fullName = `${availability.normalizedName}.eth`;
       let avatar: string | undefined;
       
-      // Demo avatar for popular names
-      if (availability.normalizedName === 'vitalik') {
-        avatar = 'https://avatars.githubusercontent.com/u/884253?v=4';
+      try {
+        const provider = await this.getCurrentProvider();
+        const avatarResult = await provider.getAvatar(fullName);
+        avatar = avatarResult || undefined;
+        
+        if (avatar) {
+          console.log(`Retrieved avatar for ${fullName}: ${avatar}`);
+        }
+      } catch (error) {
+        console.log(`Could not get avatar for ${fullName}:`, error);
       }
 
       return {
