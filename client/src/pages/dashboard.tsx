@@ -281,10 +281,19 @@ export default function Dashboard() {
                   ${user.balance || '0.00'}
                 </div>
                 <p className="text-muted-foreground">Available Balance</p>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Wallet: <span className="font-mono" data-testid="text-wallet-address">
+                <div className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
+                  <span>Wallet:</span>
+                  <span className="font-mono" data-testid="text-wallet-address">
                     {user.walletAddress?.slice(0, 10)}...{user.walletAddress?.slice(-6)}
                   </span>
+                  <button
+                    onClick={() => copyToClipboard(user.walletAddress || '', 'Wallet address')}
+                    className="ml-1 p-1 hover:bg-muted rounded transition-colors"
+                    data-testid="button-copy-wallet-address"
+                    title="Copy wallet address"
+                  >
+                    <i className="fas fa-copy text-xs text-muted-foreground hover:text-foreground"></i>
+                  </button>
                 </div>
               </div>
 

@@ -82,6 +82,23 @@ export default function TipPage() {
     }
   }, [isAuthenticated, recipient, autoSendTriggered, isLoading, isLoadingRecipient]);
 
+  // Copy to clipboard function
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: "Copied!",
+        description: `${label} copied to clipboard`,
+      });
+    } catch (err) {
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy to clipboard",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -153,9 +170,19 @@ export default function TipPage() {
               {txHash && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Transaction ID</span>
-                  <span className="font-mono text-xs text-foreground" data-testid="text-transaction-hash">
-                    {txHash.slice(0, 8)}...{txHash.slice(-6)}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-xs text-foreground" data-testid="text-transaction-hash">
+                      {txHash.slice(0, 8)}...{txHash.slice(-6)}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(txHash, 'Transaction hash')}
+                      className="ml-1 p-1 hover:bg-muted rounded transition-colors"
+                      data-testid="button-copy-transaction-hash"
+                      title="Copy transaction hash"
+                    >
+                      <i className="fas fa-copy text-xs text-muted-foreground hover:text-foreground"></i>
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="flex justify-between text-sm">
