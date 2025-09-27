@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { type User } from "@shared/schema";
+import { type User, type Transaction } from "@shared/schema";
 
 interface UserWithBalance extends User {
   balance?: string;
@@ -18,16 +18,6 @@ interface UserStats {
   tipsSent: number;
   tipsReceived: number;
   thisMonth: string;
-}
-
-interface Transaction {
-  id: string;
-  fromUserId: string;
-  toUserId: string;
-  amount: string;
-  status: string;
-  message?: string;
-  createdAt: string;
 }
 
 export default function Dashboard() {
@@ -475,13 +465,51 @@ export default function Dashboard() {
                               : 'fa-arrow-down text-chart-2'
                           }`}></i>
                         </div>
-                        <div>
-                          <p className="font-medium text-foreground">
-                            {transaction.fromUserId === user.id ? 'Tip sent' : 'Tip received'}
-                          </p>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <p className="font-medium text-foreground">
+                              {transaction.fromUserId === user.id ? 'Tip sent' : 'Tip received'}
+                            </p>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              transaction.status === 'confirmed' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                                : transaction.status === 'failed'
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                            }`}>
+                              {transaction.status}
+                            </span>
+                          </div>
                           <p className="text-sm text-muted-foreground">
-                            {new Date(transaction.createdAt).toLocaleString()}
+                            {transaction.createdAt ? new Date(transaction.createdAt).toLocaleString() : 'Unknown date'}
                           </p>
+                          {transaction.transactionHash ? (
+                            <div className="flex items-center space-x-2 mt-1">
+                              <p className="text-xs text-muted-foreground font-mono">
+                                TX: {transaction.transactionHash.slice(0, 8)}...{transaction.transactionHash.slice(-6)}
+                              </p>
+                              <button
+                                onClick={() => copyToClipboard(transaction.transactionHash!, 'Transaction hash')}
+                                className="p-1 hover:bg-muted rounded transition-colors"
+                                data-testid={`button-copy-tx-${transaction.id}`}
+                                title="Copy transaction hash"
+                              >
+                                <i className="fas fa-copy text-xs text-muted-foreground hover:text-foreground"></i>
+                              </button>
+                              <button
+                                onClick={() => window.open(`https://sepolia.etherscan.io/tx/${transaction.transactionHash}`, '_blank')}
+                                className="p-1 hover:bg-muted rounded transition-colors"
+                                data-testid={`button-view-tx-${transaction.id}`}
+                                title="View on Etherscan"
+                              >
+                                <i className="fas fa-external-link-alt text-xs text-muted-foreground hover:text-foreground"></i>
+                              </button>
+                            </div>
+                          ) : transaction.status === 'failed' && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Transaction failed before reaching blockchain
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
