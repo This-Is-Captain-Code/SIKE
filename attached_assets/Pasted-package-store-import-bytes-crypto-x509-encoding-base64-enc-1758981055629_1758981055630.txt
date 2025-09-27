@@ -1,0 +1,114 @@
+package store
+
+import (
+        "bytes"
+        "crypto/x509"
+        "encoding/base64"
+        "encoding/json"
+        "encoding/pem"
+        "ethglobal-nd-backend/internal/application/helpers"
+        "ethglobal-nd-backend/internal/httpdtos"
+        "fmt"
+        "io"
+        "math/big"
+        "net/http"
+        "time"
+
+        "github.com/golang-jwt/jwt/v4"
+)
+
+func SendPYUSDTransaction(walletID string, tx httpdtos.TransactionDTO, appId, appSecret, origin string) error {
+        url := fmt.Sprintf("https://api.privy.io/v1/wallets/%s/rpc", walletID)
+
+        PYUSDContract := "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
+        privateKeyB64 := "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUwvRkR4RXlIK1VQZUlGTGJMT0tEc0pmK1BwZ1FXdW41SElHaHZVcENBUUpvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFUVoyTVExR3BzayszbEpXRG5mei9NRHZBNjFjVXdIUnhuS1VxRTZqRDJla2NZQlBTYis4WgpheGhiZzZDTkxvS2M4bFBYKzZqVnFZdUR0YUdvOWFOR2h3PT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo="
+
+        // --- Decode private key ---
+        privDER, err := base64.StdEncoding.DecodeString(privateKeyB64)
+        if err != nil {
+                return fmt.Errorf("failed to decode base64 key: %w", err)
+        }
+        block, _ := pem.Decode(privDER)
+        if block == nil {
+                return fmt.Errorf("failed to decode PEM block")
+        }
+        privKey, err := x509.ParseECPrivateKey(block.Bytes)
+        if err != nil {
+                return fmt.Errorf("failed to parse EC private key: %w", err)
+        }
+
+        // --- Build JWT ---
+        claims := jwt.MapClaims{
+                "aud": appId,          // Audience should be the app ID
+                "iss": "privy.io",     // Issuer must be "privy.io"
+                "sub": walletID,       // Subject is the wallet ID being operated on
+                "iat": time.Now().Unix(),
+                "exp": time.Now().Add(5 * time.Minute).Unix(),
+        }
+        token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+        
+        // Set the Key ID (kid) in JWT header - this should be your Authorization Key ID from Privy Dashboard
+        token.Header["kid"] = "YOUR_ACTUAL_KEY_ID_HERE" // Replace with your actual Key ID from Privy Dashboard
+        signedJWT, err := token.SignedString(privKey)
+        if err != nil {
+                return fmt.Errorf("failed to sign JWT: %w", err)
+        }
+
+        // --- ERC20 transfer data ---
+        amount := big.NewInt(100_000) // 0.1 PYUSD (decimals=6)
+        data, err := helpers.BuildERC20TransferData(tx.To, amount)
+        if err != nil {
+                return fmt.Errorf("error building ERC20 transfer data: %w", err)
+        }
+
+        // --- Transaction payload ---
+        payload := map[string]interface{}{
+                "method":     "eth_sendTransaction",
+                "caip2":      "eip155:1",
+                "chain_type": "ethereum",
+                "params": map[string]interface{}{
+                        "transaction": map[string]interface{}{
+                                "from":  tx.From,
+                                "to":    PYUSDContract,
+                                "value": "0x0",
+                                "data":  data,
+                        },
+                },
+        }
+        jsonValue, err := json.Marshal(payload)
+        if err != nil {
+                return fmt.Errorf("error marshalling payload: %w", err)
+        }
+
+        // --- HTTP Request ---
+        req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonValue))
+        if err != nil {
+                return fmt.Errorf("error creating request: %w", err)
+        }
+        req.SetBasicAuth(appId, appSecret)
+        req.Header.Set("Content-Type", "application/json")
+        req.Header.Set("privy-app-id", appId)
+        req.Header.Set("privy-authorization", "Bearer "+signedJWT)
+        
+        // Add user session JWT for user authentication
+        if tx.SessionJwt != "" {
+                req.Header.Set("Authorization", "Bearer "+tx.SessionJwt)
+        }
+
+        client := &http.Client{}
+        resp, err := client.Do(req)
+        if err != nil {
+                return fmt.Errorf("error sending request: %w", err)
+        }
+        defer resp.Body.Close()
+
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        bodyString := string(bodyBytes)
+
+        if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+                return fmt.Errorf("transaction failed with status: %s, response: %s", resp.Status, bodyString)
+        }
+
+        fmt.Printf("✅ Transaction sent successfully, response: %s\n", bodyString)
+        return nil
+}
