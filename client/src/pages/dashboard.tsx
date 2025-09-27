@@ -396,6 +396,31 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* Micro-tip Settings */}
+              <div className="mb-6 p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Default Micro-tip Amount</h3>
+                  <div className="text-lg font-bold text-primary" data-testid="text-tip-amount">
+                    ${microTipAmount[0]?.toFixed(6)} {tokenConfig[selectedToken as keyof typeof tokenConfig]?.symbol}
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <Slider
+                    value={microTipAmount}
+                    onValueChange={setMicroTipAmount}
+                    min={tokenConfig[selectedToken as keyof typeof tokenConfig]?.min || 0.0001}
+                    max={tokenConfig[selectedToken as keyof typeof tokenConfig]?.max || 1.0}
+                    step={tokenConfig[selectedToken as keyof typeof tokenConfig]?.symbol === 'ETH' ? 0.00001 : 0.0001}
+                    className="w-full"
+                    data-testid="slider-tip-amount"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>${tokenConfig[selectedToken as keyof typeof tokenConfig]?.min || 0.0001}</span>
+                    <span>${tokenConfig[selectedToken as keyof typeof tokenConfig]?.max || 1.0}</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Funding Instructions for Zero/Low Balance */}
               {parseFloat(user.balance || '0') < 0.01 && (
                 <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
