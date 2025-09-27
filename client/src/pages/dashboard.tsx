@@ -50,6 +50,17 @@ export default function Dashboard() {
   const [username, setUsername] = useState("");
   const [ensSearchName, setEnsSearchName] = useState("");
   const [selectedEnsName, setSelectedEnsName] = useState("");
+  const [microTipAmount, setMicroTipAmount] = useState([0.01]);
+  const [selectedToken, setSelectedToken] = useState("PYUSD");
+
+  // Token configuration with limits
+  const tokenConfig = {
+    PYUSD: { symbol: "PYUSD", name: "PayPal USD", min: 0.0001, max: 1.0, network: "Testnet" },
+    USDC: { symbol: "USDC", name: "USD Coin", min: 0.0001, max: 1.0, network: "Sepolia" },
+    USDT: { symbol: "USDT", name: "Tether USD", min: 0.0001, max: 1.0, network: "Sepolia" },
+    DAI: { symbol: "DAI", name: "Dai Stablecoin", min: 0.0001, max: 1.0, network: "Sepolia" },
+    ETH: { symbol: "ETH", name: "Ethereum", min: 0.00001, max: 0.01, network: "Sepolia" }
+  };
 
   // Redirect to login if not authenticated
   useEffect(() => {
