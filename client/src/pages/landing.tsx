@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import logoImage from "@assets/image_1759009049439.png";
+import logoSvg from "@assets/logo.svg";
 
 export default function Landing() {
   return (
@@ -9,7 +9,7 @@ export default function Landing() {
         {/* Logo and Title */}
         <div className="text-center">
           <div className="mx-auto mb-4">
-            <img src={logoImage} alt="SIKE Logo" className="h-16 w-16 object-contain mx-auto" />
+            <img src={logoSvg} alt="SIKE Logo" className="h-16 w-16 object-contain mx-auto" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2" data-testid="title-app-name">
             SIKE
