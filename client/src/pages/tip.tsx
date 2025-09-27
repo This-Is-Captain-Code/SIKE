@@ -38,13 +38,12 @@ export default function TipPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Send tip mutation
+  // Send tip mutation (always uses hardcoded 0.01 PYUSD regardless of slider)
   const sendTipMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/tips/send", {
         recipientUsername: username,
-        amount: tipAmount,
-        tokenId: selectedToken.id,
+        amount: "0.01", // Hardcoded PYUSD amount
         message: "Tip via SIKE"
       });
       return res.json();
@@ -56,7 +55,7 @@ export default function TipPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       toast({
         title: "Tip Sent! 🎉",
-        description: `$${tipAmount} ${selectedToken.symbol} sent to ${recipient?.firstName || recipient?.username}`,
+        description: `$0.01 PYUSD sent to ${recipient?.firstName || recipient?.username}`,
       });
     },
     onError: (error) => {
@@ -158,7 +157,7 @@ export default function TipPage() {
                 Tip Sent! 🎉
               </h2>
               <p className="text-muted-foreground">
-                ${tipAmount} {selectedToken.symbol} sent to{" "}
+                $0.01 PYUSD sent to{" "}
                 <span className="font-medium" data-testid="text-recipient-name">
                   {recipient.firstName || recipient.username}
                 </span>
@@ -167,7 +166,7 @@ export default function TipPage() {
             <div className="bg-muted/50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Amount</span>
-                <span className="font-medium text-foreground">${tipAmount} {selectedToken.symbol}</span>
+                <span className="font-medium text-foreground">$0.01 PYUSD</span>
               </div>
               {txHash && (
                 <div className="flex justify-between text-sm">
@@ -235,30 +234,50 @@ export default function TipPage() {
             </div>
           </div>
 
-          {/* Token Selector */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              Select Token
-            </label>
-            <TokenSelector 
-              selectedToken={selectedToken}
-              onTokenChange={handleTokenChange}
-              disabled={sendTipMutation.isPending}
-            />
+          {/* Visual Demo: Token & Amount Controls - For Show Only */}
+          <div className="space-y-4 p-4 bg-muted/30 rounded-lg border-2 border-dashed border-muted-foreground/30">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground font-semibold mb-2">
+                🎛️ DEMO: Token & Amount Selector (Visual Only)
+              </p>
+            </div>
+            
+            {/* Token Selector - Visual Only */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">
+                Select Token (Demo)
+              </label>
+              <TokenSelector
+                selectedToken={selectedToken}
+                onTokenChange={setSelectedToken}
+                className="opacity-75"
+              />
+            </div>
+            
+            {/* Amount Slider - Visual Only */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">
+                Tip Amount (Demo)
+              </label>
+              <TipAmountSlider
+                token={selectedToken}
+                value={tipAmount}
+                onChange={setTipAmount}
+              />
+            </div>
           </div>
-
-          {/* Tip Amount Slider */}
-          <TipAmountSlider
-            token={selectedToken}
-            value={tipAmount}
-            onChange={setTipAmount}
-            disabled={sendTipMutation.isPending}
-          />
+          
+          {/* Actual Tip Amount */}
+          <div className="text-center bg-primary/5 rounded-lg p-4 border border-primary/20">
+            <p className="text-sm text-muted-foreground mb-1">Actual tip amount:</p>
+            <div className="text-3xl font-bold text-primary">$0.01 PYUSD</div>
+            <p className="text-xs text-muted-foreground mt-1">Fixed amount for all tips</p>
+          </div>
 
           {/* Send Button */}
           <div className="space-y-4">
             <Button 
-              onClick={handleSendTip}
+              onClick={() => sendTipMutation.mutate()}
               disabled={sendTipMutation.isPending}
               className="w-full"
               size="lg"
@@ -270,7 +289,7 @@ export default function TipPage() {
                   Sending Tip...
                 </div>
               ) : (
-                `Send $${tipAmount} ${selectedToken.symbol} Tip`
+                "Send $0.01 PYUSD Tip"
               )}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
