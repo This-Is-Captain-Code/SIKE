@@ -7,6 +7,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { TokenSelector } from "@/components/TokenSelector";
+import { TipAmountSlider } from "@/components/TipAmountSlider";
+import { TokenConfig, DEFAULT_TOKEN } from "@shared/tokenConfig";
 
 interface PublicUser {
   id: string;
@@ -22,7 +25,8 @@ export default function TipPage() {
   const { toast } = useToast();
   const [tipSent, setTipSent] = useState(false);
   const [txHash, setTxHash] = useState("");
-  const [autoSendTriggered, setAutoSendTriggered] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<TokenConfig>(DEFAULT_TOKEN);
+  const [tipAmount, setTipAmount] = useState(DEFAULT_TOKEN.minAmount);
 
   const username = params?.username;
 
@@ -39,8 +43,9 @@ export default function TipPage() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/tips/send", {
         recipientUsername: username,
-        amount: "0.01",
-        message: "Auto-tip via link"
+        amount: tipAmount,
+        tokenId: selectedToken.id,
+        message: "Tip via SIKE"
       });
       return res.json();
     },
@@ -51,13 +56,8 @@ export default function TipPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       toast({
         title: "Tip Sent! 🎉",
-        description: `$0.01 PYUSD sent to ${recipient?.firstName || recipient?.username}`,
+        description: `$${tipAmount} ${selectedToken.symbol} sent to ${recipient?.firstName || recipient?.username}`,
       });
-      
-      // Close window after 2 seconds
-      setTimeout(() => {
-        window.close();
-      }, 2000);
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
@@ -69,20 +69,20 @@ export default function TipPage() {
         description: "Please try again or check your wallet balance",
         variant: "destructive",
       });
-      // Close window after error as well
-      setTimeout(() => {
-        window.close();
-      }, 3000);
+      console.error("Tip sending failed:", error);
     },
   });
 
-  // Auto-send tip when authenticated and recipient is loaded
-  useEffect(() => {
-    if (isAuthenticated && recipient && !autoSendTriggered && !isLoading && !isLoadingRecipient) {
-      setAutoSendTriggered(true);
-      sendTipMutation.mutate();
-    }
-  }, [isAuthenticated, recipient, autoSendTriggered, isLoading, isLoadingRecipient]);
+  // Handle sending the tip
+  const handleSendTip = () => {
+    sendTipMutation.mutate();
+  };
+
+  // Handle token change and reset amount to min for new token
+  const handleTokenChange = (token: TokenConfig) => {
+    setSelectedToken(token);
+    setTipAmount(token.minAmount);
+  };
 
   // Copy to clipboard function
   const copyToClipboard = async (text: string, label: string) => {
@@ -158,7 +158,7 @@ export default function TipPage() {
                 Tip Sent! 🎉
               </h2>
               <p className="text-muted-foreground">
-                $0.01 PYUSD sent to{" "}
+                ${tipAmount} {selectedToken.symbol} sent to{" "}
                 <span className="font-medium" data-testid="text-recipient-name">
                   {recipient.firstName || recipient.username}
                 </span>
@@ -167,7 +167,7 @@ export default function TipPage() {
             <div className="bg-muted/50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Amount</span>
-                <span className="font-medium text-foreground">$0.01 PYUSD</span>
+                <span className="font-medium text-foreground">${tipAmount} {selectedToken.symbol}</span>
               </div>
               {txHash && (
                 <div className="flex justify-between text-sm">
@@ -192,14 +192,20 @@ export default function TipPage() {
                 <span className="text-chart-2 font-medium">Confirmed</span>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">Window closing automatically...</p>
+            <Button 
+              onClick={() => window.close()} 
+              className="w-full"
+              data-testid="button-close-window"
+            >
+              Close
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Auto-sending state (shown while tip is being sent)
+  // Main tip configuration state
   const displayName = recipient.firstName && recipient.lastName 
     ? `${recipient.firstName} ${recipient.lastName}`
     : recipient.firstName || recipient.username;
@@ -210,31 +216,65 @@ export default function TipPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-accent/5 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardContent className="p-8 text-center space-y-6">
-          <div className="h-20 w-20 rounded-full bg-gradient-to-r from-primary to-accent mx-auto mb-4 flex items-center justify-center">
-            <span className="text-2xl font-bold text-white" data-testid="text-recipient-initials">
-              {initials}
-            </span>
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-foreground" data-testid="text-recipient-display-name">
-              {displayName}
-            </h2>
-            <p className="text-muted-foreground" data-testid="text-recipient-username">
-              @{recipient.username}
-            </p>
-          </div>
-          <div className="bg-muted/50 rounded-lg p-4">
-            <div className="text-3xl font-bold text-foreground" data-testid="text-tip-amount">
-              $0.01
+      <Card className="w-full max-w-lg">
+        <CardContent className="p-8 space-y-6">
+          {/* Recipient Info */}
+          <div className="text-center space-y-4">
+            <div className="h-20 w-20 rounded-full bg-gradient-to-r from-primary to-accent mx-auto flex items-center justify-center">
+              <span className="text-2xl font-bold text-white" data-testid="text-recipient-initials">
+                {initials}
+              </span>
             </div>
-            <p className="text-sm text-muted-foreground">PYUSD</p>
+            <div>
+              <h2 className="text-2xl font-bold text-foreground" data-testid="text-recipient-display-name">
+                {displayName}
+              </h2>
+              <p className="text-muted-foreground" data-testid="text-recipient-username">
+                @{recipient.username}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center justify-center space-x-2">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">
-              {sendTipMutation.isPending ? "Sending tip..." : "Preparing tip..."}
+
+          {/* Token Selector */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Select Token
+            </label>
+            <TokenSelector 
+              selectedToken={selectedToken}
+              onTokenChange={handleTokenChange}
+              disabled={sendTipMutation.isPending}
+            />
+          </div>
+
+          {/* Tip Amount Slider */}
+          <TipAmountSlider
+            token={selectedToken}
+            value={tipAmount}
+            onChange={setTipAmount}
+            disabled={sendTipMutation.isPending}
+          />
+
+          {/* Send Button */}
+          <div className="space-y-4">
+            <Button 
+              onClick={handleSendTip}
+              disabled={sendTipMutation.isPending}
+              className="w-full"
+              size="lg"
+              data-testid="button-send-tip"
+            >
+              {sendTipMutation.isPending ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Sending Tip...
+                </div>
+              ) : (
+                `Send $${tipAmount} ${selectedToken.symbol} Tip`
+              )}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              This will send a micro-tip to {recipient.firstName || recipient.username}
             </p>
           </div>
         </CardContent>

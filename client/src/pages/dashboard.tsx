@@ -13,6 +13,8 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { type User, type Transaction } from "@shared/schema";
 import { Globe, Search, ExternalLink, Clock } from "lucide-react";
 import logoSvg from "@assets/logo.svg";
+import { TokenSelector } from "@/components/TokenSelector";
+import { TokenConfig, DEFAULT_TOKEN } from "@shared/tokenConfig";
 
 interface UserWithBalance extends User {
   balance?: string;
@@ -48,6 +50,7 @@ export default function Dashboard() {
   const [username, setUsername] = useState("");
   const [ensSearchName, setEnsSearchName] = useState("");
   const [selectedEnsName, setSelectedEnsName] = useState("");
+  const [preferredToken, setPreferredToken] = useState<TokenConfig>(DEFAULT_TOKEN);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -311,7 +314,7 @@ export default function Dashboard() {
                 Create Your Wallet
               </h3>
               <p className="text-muted-foreground mb-4">
-                Create a wallet to start sending and receiving PYUSD tips
+                Create a wallet to start sending and receiving crypto tips
               </p>
               <Button 
                 onClick={() => createWalletMutation.mutate()}
@@ -331,10 +334,13 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-foreground">Your Wallet</h2>
                 <div className="flex items-center space-x-2">
-                  <div className="h-6 w-6 rounded-full bg-accent flex items-center justify-center">
-                    <span className="text-accent-foreground text-xs font-bold">P</span>
+                  <div className="w-32">
+                    <TokenSelector
+                      selectedToken={preferredToken}
+                      onTokenChange={setPreferredToken}
+                      className="text-sm"
+                    />
                   </div>
-                  <span className="text-sm text-muted-foreground">PYUSD Testnet</span>
                 </div>
               </div>
               
@@ -342,7 +348,7 @@ export default function Dashboard() {
                 <div className="text-4xl font-bold text-foreground mb-2" data-testid="text-wallet-balance">
                   ${user.balance || '0.00'}
                 </div>
-                <p className="text-muted-foreground">Available Balance</p>
+                <p className="text-muted-foreground">Available Balance ({preferredToken.symbol})</p>
                 <div className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
                   <span>Wallet:</span>
                   <span className="font-mono" data-testid="text-wallet-address">
@@ -386,14 +392,14 @@ export default function Dashboard() {
                           </Button>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-orange-700 dark:text-orange-300">2. Get testnet PYUSD:</span>
+                          <span className="text-xs text-orange-700 dark:text-orange-300">2. Get testnet {preferredToken.symbol}:</span>
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-xs border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900"
-                            onClick={() => window.open('https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd', '_blank')}
+                            onClick={() => window.open(preferredToken.id === 'pyusd' ? 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd' : '#', '_blank')}
                           >
-                            <i className="fas fa-external-link-alt mr-1"></i>PYUSD Faucet
+                            <i className="fas fa-external-link-alt mr-1"></i>{preferredToken.symbol} Faucet
                           </Button>
                         </div>
                       </div>
@@ -712,7 +718,7 @@ export default function Dashboard() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Share this URL and receive $0.01 PYUSD tips instantly when people visit it!
+                Share this URL and receive micro-tips in {preferredToken.symbol} instantly when people visit it!
               </p>
             </CardContent>
           </Card>
