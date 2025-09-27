@@ -67,15 +67,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         balance: '0'
       });
 
-      // Fund wallet with testnet tokens
-      await walletService.fundWallet(walletData.address);
+      // Check real blockchain balance (will be 0 initially)
+      const realBalance = await walletService.getBalance(walletData.address);
       
-      // Update balance after funding
-      await storage.updateWalletBalance(userId, '25.00');
+      // Log funding instructions for user
+      await walletService.fundWallet(walletData.address);
 
       res.json({ 
         address: walletData.address,
-        balance: '25.00'
+        balance: realBalance,
+        needsFunding: true,
+        fundingInstructions: {
+          ethFaucet: "https://faucet.sepolia.dev/",
+          pyusdFaucet: "https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd"
+        }
       });
     } catch (error) {
       console.error("Error creating wallet:", error);

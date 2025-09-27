@@ -68,11 +68,13 @@ export default function Dashboard() {
       const res = await apiRequest("POST", "/api/wallet/create");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Wallet Created",
-        description: "Your wallet has been created and funded with testnet PYUSD!",
+        description: data.needsFunding 
+          ? "Your wallet has been created! Please fund it with testnet tokens to start tipping."
+          : "Your wallet has been created successfully!",
       });
     },
     onError: (error) => {
@@ -296,6 +298,49 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
+
+              {/* Funding Instructions for Zero/Low Balance */}
+              {parseFloat(user.balance || '0') < 0.01 && (
+                <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <div className="h-6 w-6 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center mt-0.5">
+                      <i className="fas fa-exclamation-triangle text-orange-600 dark:text-orange-400 text-xs"></i>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-orange-800 dark:text-orange-200 mb-2">
+                        Fund Your Wallet
+                      </h4>
+                      <p className="text-xs text-orange-700 dark:text-orange-300 mb-3">
+                        Your wallet needs testnet tokens to send tips. Get free tokens from these faucets:
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-orange-700 dark:text-orange-300">1. Get Sepolia ETH (for gas):</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900"
+                            onClick={() => window.open('https://faucet.sepolia.dev/', '_blank')}
+                          >
+                            <i className="fas fa-external-link-alt mr-1"></i>ETH Faucet
+                          </Button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-orange-700 dark:text-orange-300">2. Get testnet PYUSD:</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900"
+                            onClick={() => window.open('https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd', '_blank')}
+                          >
+                            <i className="fas fa-external-link-alt mr-1"></i>PYUSD Faucet
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex space-x-3">
                 <Button 

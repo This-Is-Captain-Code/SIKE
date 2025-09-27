@@ -27,9 +27,11 @@ export default function TipPage() {
   const username = params?.username;
 
   // Fetch recipient user data
-  const { data: recipient, isLoading: isLoadingRecipient } = useQuery<PublicUser>({
+  const { data: recipient, isLoading: isLoadingRecipient, error: recipientError } = useQuery<PublicUser>({
     queryKey: ["/api/users", username],
     enabled: !!username,
+    retry: false, // Don't retry on 404 errors
+    refetchOnWindowFocus: false,
   });
 
   // Send tip mutation
@@ -122,8 +124,8 @@ export default function TipPage() {
     );
   }
 
-  // User not found
-  if (!recipient) {
+  // User not found (either no data or error occurred)
+  if (!recipient || recipientError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/5 to-accent/5 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">

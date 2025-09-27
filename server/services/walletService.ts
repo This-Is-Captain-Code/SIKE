@@ -4,7 +4,7 @@ import { encryptPrivateKey, decryptPrivateKey } from '../utils/encryption';
 
 // PYUSD testnet configuration
 const PYUSD_TESTNET_CONFIG = {
-  rpcUrl: process.env.PYUSD_RPC_URL || 'https://rpc.sepolia.org', // Use public Sepolia RPC
+  rpcUrl: process.env.PYUSD_RPC_URL || 'https://1rpc.io/sepolia', // Use more reliable public Sepolia RPC
   contractAddress: process.env.PYUSD_CONTRACT_ADDRESS || '0xcac524bca292aaade2df8a05cc58f0a65b1b3bb9', // Correct PYUSD Sepolia testnet address
   faucetUrl: process.env.PYUSD_FAUCET_URL || 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd',
 };
