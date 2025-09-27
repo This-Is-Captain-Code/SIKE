@@ -1,10 +1,10 @@
 import { ethers } from "ethers";
 import { storage } from "../storage";
 
-// POAP Contract Configuration
+// POAP Contract Configuration - reuse same provider config as walletService
 const POAP_CONFIG = {
   contractAddress: "0x5FE9dE53510F982A53875a8B2Bc9721B5c92DF5B",
-  rpcUrl: process.env.RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/demo" // Default to Sepolia testnet
+  rpcUrl: process.env.PYUSD_RPC_URL || process.env.RPC_URL || 'https://1rpc.io/sepolia' // Use same reliable Sepolia RPC as walletService
 };
 
 // Clean ABI for the POAP contract
@@ -133,11 +133,27 @@ class PoapService {
       // Connect contract to wallet for signing
       const contractWithSigner = this.poapContract.connect(wallet);
       
+      // Estimate gas for the transaction
+      let gasEstimate: bigint;
+      let gasPrice: bigint;
+      try {
+        gasEstimate = await (contractWithSigner as any).createMemory.estimateGas(
+          fromUser.walletAddress,
+          toUser.walletAddress
+        );
+        gasPrice = (await this.provider.getFeeData()).gasPrice || ethers.parseUnits('20', 'gwei');
+      } catch (gasError) {
+        console.warn('Gas estimation failed, using fallback values:', gasError);
+        gasEstimate = BigInt(100000); // Fallback gas limit
+        gasPrice = ethers.parseUnits('20', 'gwei'); // Fallback gas price
+      }
+
+      const estimatedCost = gasEstimate * gasPrice;
+      
       // Check ETH balance for gas
       const ethBalance = await this.provider.getBalance(wallet.address);
-      const estimatedGas = ethers.parseEther('0.001'); // Rough estimate
-      if (ethBalance < estimatedGas) {
-        throw new Error('Insufficient ETH for gas fees');
+      if (ethBalance < estimatedCost) {
+        throw new Error(`Insufficient ETH for gas fees. Need ${ethers.formatEther(estimatedCost)} ETH, have ${ethers.formatEther(ethBalance)} ETH`);
       }
       
       // Call createMemory function
