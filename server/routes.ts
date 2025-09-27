@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { walletService } from "./services/walletService";
+import { ensService } from "./services/ensService";
 import { insertTransactionSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -259,6 +260,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating profile:", error);
       res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // ENS lookup routes (authenticated users only)
+  
+  // Check ENS name availability
+  app.get('/api/ens/check/:name', isAuthenticated, async (req, res) => {
+    try {
+      const { name } = req.params;
+      
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({ message: "ENS name is required" });
+      }
+
+      const result = await ensService.checkNameAvailability(name);
+      res.json(result);
+    } catch (error) {
+      console.error("Error checking ENS name availability:", error);
+      res.status(500).json({ message: "Failed to check ENS name availability" });
+    }
+  });
+
+  // Get comprehensive ENS name info
+  app.get('/api/ens/info/:name', isAuthenticated, async (req, res) => {
+    try {
+      const { name } = req.params;
+      
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({ message: "ENS name is required" });
+      }
+
+      const result = await ensService.getNameInfo(name);
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting ENS name info:", error);
+      res.status(500).json({ message: "Failed to get ENS name info" });
+    }
+  });
+
+  // Resolve ENS name to address
+  app.get('/api/ens/resolve/:name', isAuthenticated, async (req, res) => {
+    try {
+      const { name } = req.params;
+      
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({ message: "ENS name is required" });
+      }
+
+      const address = await ensService.resolveName(name);
+      
+      if (address) {
+        res.json({ name, address });
+      } else {
+        res.status(404).json({ message: "ENS name not found or not registered" });
+      }
+    } catch (error) {
+      console.error("Error resolving ENS name:", error);
+      res.status(500).json({ message: "Failed to resolve ENS name" });
+    }
+  });
+
+  // Reverse resolve address to ENS name
+  app.get('/api/ens/reverse/:address', isAuthenticated, async (req, res) => {
+    try {
+      const { address } = req.params;
+      
+      if (!address || address.trim().length === 0) {
+        return res.status(400).json({ message: "Ethereum address is required" });
+      }
+
+      const name = await ensService.reverseResolve(address);
+      
+      if (name) {
+        res.json({ address, name });
+      } else {
+        res.status(404).json({ message: "No ENS name found for this address" });
+      }
+    } catch (error) {
+      console.error("Error reverse resolving address:", error);
+      res.status(500).json({ message: "Failed to reverse resolve address" });
+    }
+  });
+
+  // Get registration cost estimate
+  app.get('/api/ens/cost/:name', isAuthenticated, async (req, res) => {
+    try {
+      const { name } = req.params;
+      const { duration = "1" } = req.query;
+      
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({ message: "ENS name is required" });
+      }
+
+      const durationYears = parseInt(duration as string, 10);
+      if (isNaN(durationYears) || durationYears < 1 || durationYears > 100) {
+        return res.status(400).json({ message: "Duration must be a number between 1 and 100 years" });
+      }
+
+      const result = await ensService.getRegistrationCost(name, durationYears);
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting ENS registration cost:", error);
+      res.status(500).json({ message: "Failed to get registration cost" });
     }
   });
 
