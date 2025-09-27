@@ -265,16 +265,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ENS lookup routes (authenticated users only)
   
+  // ENS name validation schema
+  const ensNameSchema = z.object({
+    name: z.string()
+      .trim()
+      .min(3, 'ENS name must be at least 3 characters')
+      .max(255, 'ENS name too long')
+      .regex(/^[a-z0-9-]+$/i, 'ENS name can only contain letters, numbers, and hyphens')
+      .refine(name => !name.startsWith('-') && !name.endsWith('-'), 'ENS name cannot start or end with hyphen')
+  });
+
   // Check ENS name availability
   app.get('/api/ens/check/:name', isAuthenticated, async (req, res) => {
     try {
-      const { name } = req.params;
-      
-      if (!name || name.trim().length === 0) {
-        return res.status(400).json({ message: "ENS name is required" });
+      const validation = ensNameSchema.safeParse({ name: req.params.name });
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid ENS name",
+          errors: validation.error.errors.map(e => e.message)
+        });
       }
 
-      const result = await ensService.checkNameAvailability(name);
+      const result = await ensService.checkNameAvailability(validation.data.name);
+      if (result.error) {
+        return res.status(400).json({ message: result.error });
+      }
       res.json(result);
     } catch (error) {
       console.error("Error checking ENS name availability:", error);
@@ -285,13 +300,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get comprehensive ENS name info
   app.get('/api/ens/info/:name', isAuthenticated, async (req, res) => {
     try {
-      const { name } = req.params;
-      
-      if (!name || name.trim().length === 0) {
-        return res.status(400).json({ message: "ENS name is required" });
+      const validation = ensNameSchema.safeParse({ name: req.params.name });
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid ENS name",
+          errors: validation.error.errors.map(e => e.message)
+        });
       }
 
-      const result = await ensService.getNameInfo(name);
+      const result = await ensService.getNameInfo(validation.data.name);
+      if (result.error) {
+        return res.status(400).json({ message: result.error });
+      }
       res.json(result);
     } catch (error) {
       console.error("Error getting ENS name info:", error);
@@ -302,16 +322,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Resolve ENS name to address
   app.get('/api/ens/resolve/:name', isAuthenticated, async (req, res) => {
     try {
-      const { name } = req.params;
-      
-      if (!name || name.trim().length === 0) {
-        return res.status(400).json({ message: "ENS name is required" });
+      const validation = ensNameSchema.safeParse({ name: req.params.name });
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid ENS name",
+          errors: validation.error.errors.map(e => e.message)
+        });
       }
 
-      const address = await ensService.resolveName(name);
+      const address = await ensService.resolveName(validation.data.name);
       
       if (address) {
-        res.json({ name, address });
+        res.json({ name: validation.data.name, address });
       } else {
         res.status(404).json({ message: "ENS name not found or not registered" });
       }
@@ -346,19 +368,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get registration cost estimate
   app.get('/api/ens/cost/:name', isAuthenticated, async (req, res) => {
     try {
-      const { name } = req.params;
-      const { duration = "1" } = req.query;
-      
-      if (!name || name.trim().length === 0) {
-        return res.status(400).json({ message: "ENS name is required" });
+      const validation = ensNameSchema.safeParse({ name: req.params.name });
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid ENS name",
+          errors: validation.error.errors.map(e => e.message)
+        });
       }
 
+      const { duration = "1" } = req.query;
       const durationYears = parseInt(duration as string, 10);
       if (isNaN(durationYears) || durationYears < 1 || durationYears > 100) {
         return res.status(400).json({ message: "Duration must be a number between 1 and 100 years" });
       }
 
-      const result = await ensService.getRegistrationCost(name, durationYears);
+      const result = await ensService.getRegistrationCost(validation.data.name, durationYears);
+      if (result.error) {
+        return res.status(400).json({ message: result.error });
+      }
       res.json(result);
     } catch (error) {
       console.error("Error getting ENS registration cost:", error);

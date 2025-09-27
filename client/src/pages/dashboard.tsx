@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { type User, type Transaction } from "@shared/schema";
+import { Link } from "wouter";
+import { Globe } from "lucide-react";
 
 interface UserWithBalance extends User {
   balance?: string;
@@ -407,6 +409,42 @@ export default function Dashboard() {
             </Card>
           </div>
         )}
+
+        {/* ENS Lookup Feature */}
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="flex items-center space-x-3 mb-3">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                    <Globe className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">ENS Domain Lookup</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Check availability and info for .eth domains
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Search for ENS names like "alice.eth" to see if they're available for registration, 
+                  check ownership, and get estimated pricing information.
+                </p>
+              </div>
+              <div className="ml-4">
+                <Link href="/ens-lookup">
+                  <Button 
+                    className="flex items-center space-x-2"
+                    data-testid="button-ens-lookup"
+                  >
+                    <Globe className="h-4 w-4" />
+                    <span>Lookup ENS</span>
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Your Tip URL */}
         {user.username && (

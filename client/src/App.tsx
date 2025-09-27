@@ -8,6 +8,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import TipPage from "@/pages/tip";
 import ProfilePage from "@/pages/profile";
+import ENSLookup from "@/pages/ens-lookup";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -27,6 +28,7 @@ function Router() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/tip/:username" component={TipPage} />
           <Route path="/profile/:username" component={ProfilePage} />
+          <Route path="/ens-lookup" component={ENSLookup} />
         </>
       )}
       <Route component={NotFound} />
