@@ -4,8 +4,8 @@ import { storage } from '../storage';
 // PYUSD testnet configuration
 const PYUSD_TESTNET_CONFIG = {
   rpcUrl: process.env.PYUSD_RPC_URL || 'https://rpc.sepolia.org', // Use public Sepolia RPC
-  contractAddress: process.env.PYUSD_CONTRACT_ADDRESS || '0x9e47d6ac40a5e45cdc4ad2b924d6e0f9f0dbac95', // Updated PYUSD Sepolia testnet address
-  faucetUrl: process.env.PYUSD_FAUCET_URL || 'https://faucet.pyusd.to',
+  contractAddress: process.env.PYUSD_CONTRACT_ADDRESS || '0xcac524bca292aaade2df8a05cc58f0a65b1b3bb9', // Correct PYUSD Sepolia testnet address
+  faucetUrl: process.env.PYUSD_FAUCET_URL || 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd',
 };
 
 export class WalletService {
@@ -20,7 +20,10 @@ export class WalletService {
       "function balanceOf(address owner) view returns (uint256)",
       "function transfer(address to, uint256 amount) returns (bool)",
       "function decimals() view returns (uint8)",
-      "event Transfer(address indexed from, address indexed to, uint256 value)"
+      "function allowance(address owner, address spender) view returns (uint256)",
+      "function approve(address spender, uint256 amount) returns (bool)",
+      "event Transfer(address indexed from, address indexed to, uint256 value)",
+      "event Approval(address indexed owner, address indexed spender, uint256 value)"
     ];
     
     this.pyusdContract = new ethers.Contract(
@@ -40,37 +43,82 @@ export class WalletService {
 
   async getBalance(address: string): Promise<string> {
     try {
-      // For testnet development, use database balance as source of truth
-      // In production, this would query the actual blockchain
-      const user = await storage.getUserByWalletAddress(address);
-      if (user) {
-        const wallet = await storage.getWallet(user.id);
-        return wallet?.balance || '0';
+      console.log(`Getting real PYUSD balance for address: ${address}`);
+      
+      // Get balance from blockchain
+      const balance = await (this.pyusdContract as any).balanceOf(address);
+      const decimals = await (this.pyusdContract as any).decimals();
+      
+      // Convert from wei to readable format
+      const formattedBalance = ethers.formatUnits(balance, decimals);
+      
+      console.log(`Blockchain balance: ${formattedBalance} PYUSD`);
+      return formattedBalance;
+      
+    } catch (error: any) {
+      console.error('Error getting balance from blockchain:', error);
+      
+      // Fallback to database balance for development
+      try {
+        const user = await storage.getUserByWalletAddress(address);
+        if (user) {
+          const wallet = await storage.getWallet(user.id);
+          console.log(`Using database fallback balance: ${wallet?.balance || '0'}`);
+          return wallet?.balance || '0';
+        }
+      } catch (dbError) {
+        console.error('Database fallback also failed:', dbError);
       }
-      return '0';
-    } catch (error) {
-      console.error('Error getting balance:', error);
+      
       return '0';
     }
   }
 
   async sendTip(fromPrivateKey: string, toAddress: string, amount: string): Promise<string> {
     try {
-      // For testnet development, simulate a successful blockchain transaction
-      // In production, this would perform the actual blockchain transfer
-      console.log(`Simulating tip transfer: ${amount} PYUSD to ${toAddress}`);
+      console.log(`Sending real tip: ${amount} PYUSD to ${toAddress}`);
       
-      // Generate a mock transaction hash for testnet
-      const mockTxHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      // Create wallet from private key
+      const wallet = new ethers.Wallet(fromPrivateKey, this.provider);
       
-      // Simulate transaction processing time
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Connect contract to wallet for signing
+      const contractWithSigner = this.pyusdContract.connect(wallet);
       
-      console.log(`Mock transaction successful: ${mockTxHash}`);
-      return mockTxHash;
-    } catch (error) {
+      // Convert amount to proper decimals (PYUSD uses 6 decimals)
+      const decimals = await this.pyusdContract.decimals();
+      const amountInWei = ethers.parseUnits(amount, decimals);
+      
+      console.log(`Transferring ${amountInWei.toString()} (${amount} PYUSD) from ${wallet.address} to ${toAddress}`);
+      
+      // Send the transaction
+      const tx = await (contractWithSigner as any).transfer(toAddress, amountInWei);
+      
+      console.log(`Transaction sent with hash: ${tx.hash}`);
+      console.log(`Waiting for confirmation...`);
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      
+      if (receipt?.status === 1) {
+        console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+        return tx.hash;
+      } else {
+        throw new Error('Transaction failed');
+      }
+      
+    } catch (error: any) {
       console.error('Error sending tip:', error);
-      throw new Error('Failed to send tip');
+      
+      // Check if it's a specific blockchain error
+      if (error?.code === 'INSUFFICIENT_FUNDS') {
+        throw new Error('Insufficient PYUSD balance');
+      } else if (error?.code === 'NETWORK_ERROR') {
+        throw new Error('Network connection failed');
+      } else if (error?.message?.includes('insufficient funds')) {
+        throw new Error('Insufficient ETH for gas fees');
+      }
+      
+      throw new Error(`Failed to send tip: ${error?.message || 'Unknown error'}`);
     }
   }
 
