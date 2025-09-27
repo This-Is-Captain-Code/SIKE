@@ -3,8 +3,8 @@ import { storage } from '../storage';
 
 // PYUSD testnet configuration
 const PYUSD_TESTNET_CONFIG = {
-  rpcUrl: process.env.PYUSD_RPC_URL || 'https://sepolia.infura.io/v3/' + (process.env.INFURA_API_KEY || 'default'),
-  contractAddress: process.env.PYUSD_CONTRACT_ADDRESS || '0x9Cc94A7b7F1C4510BF54Eed7AAacE7C4f61c9dc8', // PYUSD Sepolia testnet
+  rpcUrl: process.env.PYUSD_RPC_URL || 'https://rpc.sepolia.org', // Use public Sepolia RPC
+  contractAddress: process.env.PYUSD_CONTRACT_ADDRESS || '0x9e47d6ac40a5e45cdc4ad2b924d6e0f9f0dbac95', // Updated PYUSD Sepolia testnet address
   faucetUrl: process.env.PYUSD_FAUCET_URL || 'https://faucet.pyusd.to',
 };
 
@@ -40,9 +40,14 @@ export class WalletService {
 
   async getBalance(address: string): Promise<string> {
     try {
-      const balance = await this.pyusdContract.balanceOf(address);
-      const decimals = await this.pyusdContract.decimals();
-      return ethers.formatUnits(balance, decimals);
+      // For testnet development, use database balance as source of truth
+      // In production, this would query the actual blockchain
+      const user = await storage.getUserByWalletAddress(address);
+      if (user) {
+        const wallet = await storage.getWallet(user.id);
+        return wallet?.balance || '0';
+      }
+      return '0';
     } catch (error) {
       console.error('Error getting balance:', error);
       return '0';
