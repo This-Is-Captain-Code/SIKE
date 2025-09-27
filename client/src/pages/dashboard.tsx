@@ -201,6 +201,13 @@ export default function Dashboard() {
     }
   };
 
+  const handleTokenChange = (tokenSymbol: string) => {
+    setSelectedToken(tokenSymbol);
+    const config = tokenConfig[tokenSymbol as keyof typeof tokenConfig];
+    // Reset slider to minimum value when token changes
+    setMicroTipAmount([config.min]);
+  };
+
   const handleUsernameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (username.trim()) {
@@ -345,9 +352,26 @@ export default function Dashboard() {
                 <h2 className="text-xl font-semibold text-foreground">Your Wallet</h2>
                 <div className="flex items-center space-x-2">
                   <div className="h-6 w-6 rounded-full bg-accent flex items-center justify-center">
-                    <span className="text-accent-foreground text-xs font-bold">P</span>
+                    <span className="text-accent-foreground text-xs font-bold">
+                      {tokenConfig[selectedToken as keyof typeof tokenConfig]?.symbol[0] || 'P'}
+                    </span>
                   </div>
-                  <span className="text-sm text-muted-foreground">PYUSD Testnet</span>
+                  <Select 
+                    value={selectedToken} 
+                    onValueChange={handleTokenChange}
+                    data-testid="select-token"
+                  >
+                    <SelectTrigger className="w-auto border-none shadow-none text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(tokenConfig).map(([symbol, config]) => (
+                        <SelectItem key={symbol} value={symbol} data-testid={`option-token-${symbol.toLowerCase()}`}>
+                          {config.symbol} {config.network}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               
