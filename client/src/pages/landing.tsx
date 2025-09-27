@@ -8,8 +8,8 @@ export default function Landing() {
       <div className="w-full max-w-md space-y-8">
         {/* Logo and Title */}
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center mb-4 p-2">
-            <img src={logoImage} alt="SIKE Logo" className="h-full w-full object-contain" />
+          <div className="mx-auto mb-4">
+            <img src={logoImage} alt="SIKE Logo" className="h-16 w-16 object-contain mx-auto" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2" data-testid="title-app-name">
             SIKE
