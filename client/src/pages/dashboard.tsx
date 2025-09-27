@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { type User, type Transaction } from "@shared/schema";
 import { Globe, Search, ExternalLink, Clock } from "lucide-react";
+import logoImage from "@assets/image_1759009049439.png";
 
 interface UserWithBalance extends User {
   balance?: string;
@@ -239,11 +240,11 @@ export default function Dashboard() {
       <header className="bg-card border-b border-border px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center">
-              <i className="fas fa-wallet text-white text-sm"></i>
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center p-1">
+              <img src={logoImage} alt="SIKE Logo" className="h-full w-full object-contain" />
             </div>
             <h1 className="text-lg font-semibold text-foreground" data-testid="title-dashboard">
-              PYUSD Tipper
+              SIKE
             </h1>
           </div>
           

@@ -1,8 +1,8 @@
-# PYUSD Tipper
+# SIKE
 
 ## Overview
 
-PYUSD Tipper is a full-stack web application that enables users to send micro-tips using PYUSD cryptocurrency on the Ethereum Sepolia testnet. The application provides a seamless wallet creation experience with automatic testnet funding and facilitates easy peer-to-peer tipping through a clean, modern interface.
+SIKE is a full-stack web application that enables users to send micro-tips using PYUSD cryptocurrency on the Ethereum Sepolia testnet. The application provides a seamless wallet creation experience with automatic testnet funding and facilitates easy peer-to-peer tipping through a clean, modern interface.
 
 The system handles wallet management, transaction processing, user authentication via Replit's OAuth system, and provides real-time balance tracking. Users can send tips to others by username, with transaction statuses tracked through the blockchain.
 
