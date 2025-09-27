@@ -2,15 +2,16 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { type User, type Transaction } from "@shared/schema";
-import { Link } from "wouter";
-import { Globe } from "lucide-react";
+import { Globe, Search, ExternalLink, Clock } from "lucide-react";
 
 interface UserWithBalance extends User {
   balance?: string;
@@ -22,10 +23,30 @@ interface UserStats {
   thisMonth: string;
 }
 
+interface ENSNameInfo {
+  name: string;
+  available: boolean;
+  address?: string;
+  expires?: string;
+  registered?: boolean;
+  avatar?: string;
+  error?: string;
+  normalizedName?: string;
+}
+
+interface ENSCost {
+  cost?: string;
+  currency: string;
+  duration: number;
+  error?: string;
+}
+
 export default function Dashboard() {
   const { user, isLoading, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const [username, setUsername] = useState("");
+  const [ensSearchName, setEnsSearchName] = useState("");
+  const [selectedEnsName, setSelectedEnsName] = useState("");
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -52,6 +73,34 @@ export default function Dashboard() {
   const { data: transactions = [] } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions"],
     enabled: isAuthenticated,
+  });
+
+  // Query for ENS name info when a name is selected
+  const { data: ensNameInfo, isLoading: ensNameInfoLoading, error: ensNameInfoError } = useQuery<ENSNameInfo>({
+    queryKey: ["/api/ens/info", selectedEnsName],
+    enabled: isAuthenticated && selectedEnsName.length > 0,
+    queryFn: async () => {
+      const response = await fetch(`/api/ens/info/${encodeURIComponent(selectedEnsName)}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to fetch ENS name info" }));
+        throw new Error(errorData.message || "Failed to fetch ENS name info");
+      }
+      return response.json();
+    },
+  });
+
+  // Query for registration cost estimate
+  const { data: ensCostInfo } = useQuery<ENSCost>({
+    queryKey: ["/api/ens/cost", selectedEnsName],
+    enabled: isAuthenticated && selectedEnsName.length > 0 && ensNameInfo?.available,
+    queryFn: async () => {
+      const response = await fetch(`/api/ens/cost/${encodeURIComponent(selectedEnsName)}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to fetch cost info" }));
+        throw new Error(errorData.message || "Failed to fetch cost info");
+      }
+      return response.json();
+    },
   });
 
   // Create wallet mutation
@@ -142,6 +191,26 @@ export default function Dashboard() {
     e.preventDefault();
     if (username.trim()) {
       updateUsernameMutation.mutate(username.trim());
+    }
+  };
+
+  const handleEnsSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (ensSearchName.trim()) {
+      setSelectedEnsName(ensSearchName.trim());
+    }
+  };
+
+  const formatExpirationDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return "Unknown";
     }
   };
 
@@ -410,39 +479,216 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ENS Lookup Feature */}
+        {/* ENS Domain Lookup */}
         <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-3">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                    <Globe className="h-5 w-5 text-white" />
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Globe className="h-5 w-5 text-blue-600" />
+              <span>ENS Domain Lookup</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Search Form */}
+            <form onSubmit={handleEnsSearch} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="ens-search">Search ENS Domain</Label>
+                <div className="flex space-x-3">
+                  <div className="flex-1 relative">
+                    <Input
+                      id="ens-search"
+                      type="text"
+                      placeholder="Enter name (e.g., alice or alice.eth)"
+                      value={ensSearchName}
+                      onChange={(e) => setEnsSearchName(e.target.value)}
+                      data-testid="input-ens-search"
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm">
+                      .eth
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">ENS Domain Lookup</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Check availability and info for .eth domains
+                  <Button 
+                    type="submit" 
+                    disabled={!ensSearchName.trim() || ensNameInfoLoading}
+                    data-testid="button-search-ens"
+                  >
+                    {ensNameInfoLoading ? "Searching..." : <Search className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </form>
+
+            {/* Search Results */}
+            {selectedEnsName && (
+              <div className="space-y-4">
+                <Separator />
+                
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Results for "{selectedEnsName}.eth"</h4>
+                  {ensNameInfo && !ensNameInfo.error && (
+                    <Badge 
+                      variant={ensNameInfo.available ? "default" : "secondary"}
+                      data-testid="badge-availability-status"
+                    >
+                      {ensNameInfo.available ? "Available" : "Registered"}
+                    </Badge>
+                  )}
+                </div>
+
+                {ensNameInfoLoading && (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="text-sm text-muted-foreground">Looking up ENS name...</p>
+                  </div>
+                )}
+
+                {ensNameInfoError && (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {ensNameInfoError.message || "Error looking up ENS name. Please try again."}
                     </p>
                   </div>
-                </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Search for ENS names like "alice.eth" to see if they're available for registration, 
-                  check ownership, and get estimated pricing information.
-                </p>
+                )}
+
+                {ensNameInfo && ensNameInfo.error && (
+                  <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      {ensNameInfo.error}
+                    </p>
+                  </div>
+                )}
+
+                {ensNameInfo && !ensNameInfo.error && (
+                  <div className="space-y-4">
+                    {/* Status */}
+                    <div className="text-center">
+                      <div className={`text-4xl mb-2 ${ensNameInfo.available ? 'text-green-500' : 'text-blue-500'}`}>
+                        {ensNameInfo.available ? '✓' : '🏠'}
+                      </div>
+                      <h3 className="text-lg font-bold text-foreground mb-1" data-testid="text-domain-status">
+                        {ensNameInfo.available ? 'Available!' : 'Registered'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {ensNameInfo.available 
+                          ? 'This ENS name is available for registration'
+                          : 'This ENS name is already owned'
+                        }
+                      </p>
+                    </div>
+
+                    {/* Details */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Domain:</span>
+                          <div className="flex items-center space-x-2">
+                            <code className="text-sm bg-muted px-2 py-1 rounded" data-testid="text-full-domain-name">
+                              {ensNameInfo.normalizedName || ensNameInfo.name}.eth
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyToClipboard(`${ensNameInfo.normalizedName || ensNameInfo.name}.eth`, 'Domain name')}
+                              data-testid="button-copy-domain-name"
+                              className="h-6 w-6 p-0"
+                            >
+                              📋
+                            </Button>
+                          </div>
+                        </div>
+
+                        {ensNameInfo.address && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Address:</span>
+                            <div className="flex items-center space-x-2">
+                              <code className="text-sm bg-muted px-2 py-1 rounded font-mono" data-testid="text-resolved-address">
+                                {ensNameInfo.address.slice(0, 10)}...{ensNameInfo.address.slice(-6)}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => copyToClipboard(ensNameInfo.address!, 'Address')}
+                                data-testid="button-copy-resolved-address"
+                                className="h-6 w-6 p-0"
+                              >
+                                📋
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {ensNameInfo.expires && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Expires:</span>
+                            <div className="flex items-center space-x-2">
+                              <Clock className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm" data-testid="text-expiration-date">
+                                {formatExpirationDate(ensNameInfo.expires)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cost Info */}
+                      {ensNameInfo.available && ensCostInfo && (
+                        <div className="space-y-2">
+                          <h5 className="text-sm font-semibold text-foreground">Estimated Cost</h5>
+                          <div className="bg-muted/50 rounded-lg p-3 text-center">
+                            {ensCostInfo.cost ? (
+                              <>
+                                <div className="text-xl font-bold text-foreground" data-testid="text-registration-cost">
+                                  {ensCostInfo.cost} {ensCostInfo.currency}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  for {ensCostInfo.duration} year{ensCostInfo.duration > 1 ? 's' : ''}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  * Estimated - actual pricing may vary
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">
+                                {ensCostInfo.error || 'Cost unavailable'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Button */}
+                    <div className="flex justify-center">
+                      {ensNameInfo.available ? (
+                        <Button 
+                          onClick={() => window.open(`https://app.ens.domains/name/${ensNameInfo.normalizedName || ensNameInfo.name}.eth`, '_blank')}
+                          data-testid="button-register-ens"
+                          className="flex items-center space-x-2"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span>Register on ENS App</span>
+                        </Button>
+                      ) : ensNameInfo.address && (
+                        <Button 
+                          variant="outline"
+                          onClick={() => window.open(`https://etherscan.io/address/${ensNameInfo.address}`, '_blank')}
+                          data-testid="button-view-owner"
+                          className="flex items-center space-x-2"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span>View Owner</span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="ml-4">
-                <Link href="/ens-lookup">
-                  <Button 
-                    className="flex items-center space-x-2"
-                    data-testid="button-ens-lookup"
-                  >
-                    <Globe className="h-4 w-4" />
-                    <span>Lookup ENS</span>
-                  </Button>
-                </Link>
-              </div>
-            </div>
+            )}
+
+            {!selectedEnsName && (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                Search for ENS names to check availability and get registration info
+              </p>
+            )}
           </CardContent>
         </Card>
 
