@@ -6,6 +6,8 @@ PYUSD Tipper is a full-stack web application that enables users to send micro-ti
 
 The system handles wallet management, transaction processing, user authentication via Replit's OAuth system, and provides real-time balance tracking. Users can send tips to others by username, with transaction statuses tracked through the blockchain.
 
+**New Feature**: ENS Domain Lookup - Authenticated users can search for Ethereum Name Service (ENS) domains to check availability, view ownership information, get registration cost estimates, and navigate to the official ENS registration site.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -39,6 +41,7 @@ Preferred communication style: Simple, everyday language.
 - **Wallet Management**: Ethers.js for wallet creation and transaction handling
 - **Token Standard**: ERC-20 PYUSD token contract integration
 - **Transaction Tracking**: Real-time status monitoring and balance updates
+- **ENS Integration**: Ethereum mainnet connectivity for ENS domain lookup, name resolution, and availability checking
 
 ### Authentication & Authorization
 - **Provider**: Replit OAuth with OpenID Connect
@@ -72,8 +75,18 @@ Preferred communication style: Simple, everyday language.
 - **Build Tools**: Vite for frontend, esbuild for backend bundling
 
 ### Third-Party Libraries
-- **Ethers.js**: Ethereum blockchain interaction
+- **Ethers.js**: Ethereum blockchain interaction (Sepolia testnet for PYUSD, mainnet for ENS)
 - **TanStack Query**: Server state management and caching
 - **Drizzle ORM**: Type-safe database operations
 - **Tailwind CSS**: Utility-first styling framework
 - **React Hook Form**: Form state management and validation
+
+## Recent Changes
+
+### September 27, 2025 - ENS Domain Lookup Feature
+- **Added ENS Service**: Created server-side service for ENS domain operations using ethers.js connected to Ethereum mainnet
+- **API Endpoints**: Added authenticated API routes for ENS name availability checking, domain info retrieval, address resolution, and cost estimation
+- **Frontend Interface**: Built comprehensive ENS lookup page with search functionality, domain information display, and cost estimates
+- **Dashboard Integration**: Added ENS lookup navigation card to the main dashboard
+- **Security**: Implemented Zod validation for all ENS API endpoints with proper error handling
+- **User Experience**: Integrated with official ENS registration site for seamless domain registration workflow
