@@ -24,9 +24,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const wallet = await storage.getWallet(userId);
       const balance = wallet ? await walletService.getBalance(user.walletAddress || '') : '0';
 
+      // Return only safe user data, never expose sensitive fields
       res.json({
-        ...user,
-        balance: balance || '0'
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        username: user.username,
+        walletAddress: user.walletAddress,
+        balance: balance || '0',
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+        // NEVER expose walletPrivateKey or other sensitive fields
       });
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -48,15 +58,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Wallet already exists" });
       }
 
-      // Create new wallet
-      const walletData = await walletService.createWallet();
-      
-      // Update user with wallet info
-      await storage.upsertUser({
-        ...user,
-        walletAddress: walletData.address,
-        walletPrivateKey: walletData.privateKey // In production, encrypt this
-      });
+      // Create new wallet securely (private key encrypted and stored)
+      const walletData = await walletService.createWalletForUser(userId);
 
       // Create wallet record
       await storage.createWallet({
@@ -104,11 +107,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Validation schema for tip requests
+  const tipRequestSchema = z.object({
+    recipientUsername: z.string().min(1, 'Recipient username is required').max(50, 'Username too long'),
+    amount: z.string().refine(val => {
+      const num = parseFloat(val);
+      return !isNaN(num) && num > 0 && num <= 100; // Max $100 per tip
+    }, 'Amount must be a valid positive number between 0 and 100'),
+    message: z.string().max(500, 'Message too long').optional()
+  });
+
   // Send tip
   app.post('/api/tips/send', isAuthenticated, async (req: any, res) => {
     try {
       const senderId = req.user.claims.sub;
-      const { recipientUsername, amount = '0.01', message } = req.body;
+      
+      // Validate request body with Zod
+      const validationResult = tipRequestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request data",
+          errors: validationResult.error.errors
+        });
+      }
+      
+      const { recipientUsername, amount = '0.01', message } = validationResult.data;
 
       const sender = await storage.getUser(senderId);
       const recipient = await storage.getUserByUsername(recipientUsername);
@@ -117,7 +140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      if (!sender.walletAddress || !sender.walletPrivateKey) {
+      if (!sender.walletAddress) {
         return res.status(400).json({ message: "Sender wallet not found" });
       }
 
@@ -135,9 +158,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       try {
-        // Send the tip on blockchain
-        const txHash = await walletService.sendTip(
-          sender.walletPrivateKey,
+        // Send the tip on blockchain using secure method
+        const txHash = await walletService.sendTipFromUser(
+          senderId,
           recipient.walletAddress,
           amount
         );

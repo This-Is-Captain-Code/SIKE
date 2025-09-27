@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { storage } from '../storage';
+import { encryptPrivateKey, decryptPrivateKey } from '../utils/encryption';
 
 // PYUSD testnet configuration
 const PYUSD_TESTNET_CONFIG = {
@@ -33,12 +34,48 @@ export class WalletService {
     );
   }
 
-  async createWallet(): Promise<{ address: string; privateKey: string }> {
+  async createWallet(): Promise<{ address: string }> {
     const wallet = ethers.Wallet.createRandom();
     return {
-      address: wallet.address,
-      privateKey: wallet.privateKey
+      address: wallet.address
+      // Private key is handled securely and never returned to the client
     };
+  }
+
+  async createWalletForUser(userId: string): Promise<{ address: string }> {
+    const wallet = ethers.Wallet.createRandom();
+    
+    // Encrypt the private key before storing
+    const encryptedPrivateKey = encryptPrivateKey(wallet.privateKey);
+    
+    // Update user with wallet address and encrypted private key
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    await storage.upsertUser({
+      ...user,
+      walletAddress: wallet.address,
+      walletPrivateKey: encryptedPrivateKey
+    });
+    
+    return {
+      address: wallet.address
+    };
+  }
+
+  private async getDecryptedPrivateKey(userId: string): Promise<string> {
+    const user = await storage.getUser(userId);
+    if (!user?.walletPrivateKey) {
+      throw new Error('No wallet found for user');
+    }
+    
+    try {
+      return decryptPrivateKey(user.walletPrivateKey);
+    } catch (error) {
+      throw new Error('Failed to decrypt wallet private key');
+    }
   }
 
   async getBalance(address: string): Promise<string> {
@@ -74,19 +111,53 @@ export class WalletService {
     }
   }
 
-  async sendTip(fromPrivateKey: string, toAddress: string, amount: string): Promise<string> {
+  async sendTipFromUser(fromUserId: string, toAddress: string, amount: string): Promise<string> {
     try {
-      console.log(`Sending real tip: ${amount} PYUSD to ${toAddress}`);
+      console.log(`Sending real tip: ${amount} PYUSD from user ${fromUserId} to ${toAddress}`);
       
-      // Create wallet from private key
-      const wallet = new ethers.Wallet(fromPrivateKey, this.provider);
+      // Validate addresses and amount
+      if (!ethers.isAddress(toAddress)) {
+        throw new Error('Invalid recipient address');
+      }
+      
+      const amountFloat = parseFloat(amount);
+      if (isNaN(amountFloat) || amountFloat <= 0) {
+        throw new Error('Invalid amount');
+      }
+      
+      // Get encrypted private key for the user
+      const privateKey = await this.getDecryptedPrivateKey(fromUserId);
+      
+      // Create wallet from decrypted private key
+      const wallet = new ethers.Wallet(privateKey, this.provider);
+      
+      // CRITICAL SAFETY CHECK: Verify wallet address matches stored address
+      const user = await storage.getUser(fromUserId);
+      if (!user?.walletAddress || wallet.address.toLowerCase() !== user.walletAddress.toLowerCase()) {
+        throw new Error('Wallet address mismatch - possible data corruption');
+      }
+      
+      console.log(`Sending from wallet: ${wallet.address}`);
       
       // Connect contract to wallet for signing
       const contractWithSigner = this.pyusdContract.connect(wallet);
       
       // Convert amount to proper decimals (PYUSD uses 6 decimals)
-      const decimals = await this.pyusdContract.decimals();
+      const decimals = await (this.pyusdContract as any).decimals();
       const amountInWei = ethers.parseUnits(amount, decimals);
+      
+      // Check PYUSD balance
+      const pyusdBalance = await (this.pyusdContract as any).balanceOf(wallet.address);
+      if (pyusdBalance < amountInWei) {
+        throw new Error('Insufficient PYUSD balance');
+      }
+      
+      // Check ETH balance for gas
+      const ethBalance = await this.provider.getBalance(wallet.address);
+      const estimatedGas = ethers.parseEther('0.001'); // Rough estimate
+      if (ethBalance < estimatedGas) {
+        throw new Error('Insufficient ETH for gas fees');
+      }
       
       console.log(`Transferring ${amountInWei.toString()} (${amount} PYUSD) from ${wallet.address} to ${toAddress}`);
       
@@ -109,13 +180,18 @@ export class WalletService {
     } catch (error: any) {
       console.error('Error sending tip:', error);
       
+      // Re-throw our custom errors as-is
+      if (error.message?.startsWith('Invalid') || 
+          error.message?.startsWith('Insufficient') ||
+          error.message?.startsWith('No wallet found')) {
+        throw error;
+      }
+      
       // Check if it's a specific blockchain error
       if (error?.code === 'INSUFFICIENT_FUNDS') {
         throw new Error('Insufficient PYUSD balance');
       } else if (error?.code === 'NETWORK_ERROR') {
         throw new Error('Network connection failed');
-      } else if (error?.message?.includes('insufficient funds')) {
-        throw new Error('Insufficient ETH for gas fees');
       }
       
       throw new Error(`Failed to send tip: ${error?.message || 'Unknown error'}`);
@@ -124,27 +200,39 @@ export class WalletService {
 
   async fundWallet(address: string): Promise<boolean> {
     try {
-      // In a real implementation, this would call the PYUSD testnet faucet
-      // For now, we'll simulate funding by updating the database balance
-      console.log(`Funding wallet ${address} with testnet PYUSD`);
+      console.log(`Attempting to fund wallet ${address} with testnet tokens`);
       
-      // Simulate API call to faucet
-      const response = await fetch(PYUSD_TESTNET_CONFIG.faucetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, amount: '25' })
-      });
+      // For real blockchain integration, users need to:
+      // 1. Get testnet ETH for gas fees from Sepolia faucet
+      // 2. Get testnet PYUSD from Google Cloud faucet
       
-      if (!response.ok) {
-        // Fallback: simulate successful funding
-        console.log('Faucet not available, simulating funding');
+      console.log(`To fund wallet ${address}:`);
+      console.log(`1. Get Sepolia ETH: https://faucet.sepolia.dev/`);
+      console.log(`2. Get testnet PYUSD: https://cloud.google.com/application/web3/faucet/ethereum/sepolia/pyusd`);
+      
+      // Check if wallet already has some balance
+      try {
+        const currentBalance = await this.getBalance(address);
+        const ethBalance = await this.provider.getBalance(address);
+        
+        console.log(`Current PYUSD balance: ${currentBalance}`);
+        console.log(`Current ETH balance: ${ethers.formatEther(ethBalance)} ETH`);
+        
+        // For automatic funding, we would need to integrate with faucet APIs
+        // This is currently not possible with public faucets that require manual interaction
+        
+        // Return true to allow wallet creation to proceed
+        // Users will need to manually fund their wallets
+        return true;
+        
+      } catch (error) {
+        console.log('Unable to check current balance, proceeding with wallet creation');
         return true;
       }
       
-      return true;
-    } catch (error) {
-      console.error('Error funding wallet:', error);
-      // For testnet, we'll still return true to allow development
+    } catch (error: any) {
+      console.error('Error in funding process:', error);
+      // Don't fail wallet creation due to funding issues
       return true;
     }
   }
