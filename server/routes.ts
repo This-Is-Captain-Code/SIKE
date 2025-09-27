@@ -1,0 +1,239 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
+import { walletService } from "./services/walletService";
+import { insertTransactionSchema } from "@shared/schema";
+import { z } from "zod";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Get wallet information
+      const wallet = await storage.getWallet(userId);
+      const balance = wallet ? await walletService.getBalance(user.walletAddress || '') : '0';
+
+      res.json({
+        ...user,
+        balance: balance || '0'
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Create wallet for new user
+  app.post('/api/wallet/create', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.walletAddress) {
+        return res.status(400).json({ message: "Wallet already exists" });
+      }
+
+      // Create new wallet
+      const walletData = await walletService.createWallet();
+      
+      // Update user with wallet info
+      await storage.upsertUser({
+        ...user,
+        walletAddress: walletData.address,
+        walletPrivateKey: walletData.privateKey // In production, encrypt this
+      });
+
+      // Create wallet record
+      await storage.createWallet({
+        userId,
+        balance: '0'
+      });
+
+      // Fund wallet with testnet tokens
+      await walletService.fundWallet(walletData.address);
+      
+      // Update balance after funding
+      await storage.updateWalletBalance(userId, '25.00');
+
+      res.json({ 
+        address: walletData.address,
+        balance: '25.00'
+      });
+    } catch (error) {
+      console.error("Error creating wallet:", error);
+      res.status(500).json({ message: "Failed to create wallet" });
+    }
+  });
+
+  // Get user by username for tipping
+  app.get('/api/users/:username', async (req, res) => {
+    try {
+      const { username } = req.params;
+      const user = await storage.getUserByUsername(username);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Return public profile info only
+      res.json({
+        id: user.id,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl
+      });
+    } catch (error) {
+      console.error("Error fetching user by username:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Send tip
+  app.post('/api/tips/send', isAuthenticated, async (req: any, res) => {
+    try {
+      const senderId = req.user.claims.sub;
+      const { recipientUsername, amount = '0.01', message } = req.body;
+
+      const sender = await storage.getUser(senderId);
+      const recipient = await storage.getUserByUsername(recipientUsername);
+
+      if (!sender || !recipient) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!sender.walletAddress || !sender.walletPrivateKey) {
+        return res.status(400).json({ message: "Sender wallet not found" });
+      }
+
+      if (!recipient.walletAddress) {
+        return res.status(400).json({ message: "Recipient wallet not found" });
+      }
+
+      // Create transaction record
+      const transaction = await storage.createTransaction({
+        fromUserId: senderId,
+        toUserId: recipient.id,
+        amount,
+        status: 'pending',
+        message
+      });
+
+      try {
+        // Send the tip on blockchain
+        const txHash = await walletService.sendTip(
+          sender.walletPrivateKey,
+          recipient.walletAddress,
+          amount
+        );
+
+        // Update transaction with success
+        await storage.updateTransactionStatus(transaction.id, 'confirmed', txHash);
+
+        // Update balances
+        const senderWallet = await storage.getWallet(senderId);
+        const recipientWallet = await storage.getWallet(recipient.id);
+
+        if (senderWallet) {
+          const newSenderBalance = (parseFloat(senderWallet.balance) - parseFloat(amount)).toString();
+          await storage.updateWalletBalance(senderId, newSenderBalance);
+        }
+
+        if (recipientWallet) {
+          const newRecipientBalance = (parseFloat(recipientWallet.balance) + parseFloat(amount)).toString();
+          await storage.updateWalletBalance(recipient.id, newRecipientBalance);
+        }
+
+        res.json({
+          success: true,
+          transactionId: transaction.id,
+          transactionHash: txHash
+        });
+
+      } catch (blockchainError) {
+        // Update transaction with failure
+        await storage.updateTransactionStatus(transaction.id, 'failed');
+        throw blockchainError;
+      }
+
+    } catch (error) {
+      console.error("Error sending tip:", error);
+      res.status(500).json({ message: "Failed to send tip" });
+    }
+  });
+
+  // Get user transactions
+  app.get('/api/transactions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const transactions = await storage.getTransactionsByUser(userId);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+      res.status(500).json({ message: "Failed to fetch transactions" });
+    }
+  });
+
+  // Get user stats
+  app.get('/api/stats', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const stats = await storage.getUserStats(userId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  // Update user profile
+  app.patch('/api/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { username } = req.body;
+
+      if (!username) {
+        return res.status(400).json({ message: "Username is required" });
+      }
+
+      // Check if username is already taken
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser && existingUser.id !== userId) {
+        return res.status(400).json({ message: "Username already taken" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const updatedUser = await storage.upsertUser({
+        ...user,
+        username
+      });
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
